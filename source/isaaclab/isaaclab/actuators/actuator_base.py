@@ -353,6 +353,9 @@ class ActuatorBase(ABC):
                 # if tensor, then use the same tensor for all joints
                 if default_value.shape == (self._num_envs, self.num_joints):
                     param = default_value.float()
+                elif default_value.shape == (1, self.num_joints):
+                    # broadcast single-env default (e.g. from Newton backend) to all envs
+                    param = default_value.expand(self._num_envs, -1).float()
                 else:
                     raise ValueError(
                         "Invalid default value tensor shape.\n"
