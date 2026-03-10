@@ -14,6 +14,7 @@ from typing import TYPE_CHECKING
 import numpy as np
 import warp as wp
 from newton import Axis, CollisionPipeline, Contacts, Control, Model, ModelBuilder, State, eval_fk
+from newton._src.usd.schemas import SchemaResolverNewton, SchemaResolverPhysx
 from newton.sensors import SensorContact as NewtonContactSensor
 from newton.solvers import SolverBase, SolverFeatherstone, SolverMuJoCo, SolverNotifyFlags, SolverXPBD
 
@@ -109,12 +110,18 @@ class NewtonManager(PhysicsManager):
         if sim is not None:
             cls._gravity_vector = sim.cfg.gravity  # type: ignore[union-attr]
 
-            # USD/Fabric sync only needed when Kit viewport is active.
-            # Parse mirrors SimulationContext._get_cli_visualizer_types (comma-and-space separated).
-            viz_str = sim.get_setting("/isaaclab/visualizer") or ""
-            parts = [p.strip() for p in viz_str.split(",") if p.strip()]
-            requested = {v for part in parts for v in part.split() if v}
-            cls._clone_physics_only = "kit" not in requested
+            # USD/Fabric sync for Omniverse rendering (visualizer) or Newton+RTX (Kit cameras)
+            try:
+                requested = sim.resolve_visualizer_types()
+            except Exception:
+                requested = []
+                viz_raw = sim.get_setting("/isaaclab/visualizer/types")
+                if isinstance(viz_raw, str):
+                    requested = [v for part in viz_raw.split(",") for v in part.split() if v]
+            from isaaclab.app.settings_manager import get_settings_manager
+
+            cameras_enabled = bool(get_settings_manager().get("/isaaclab/cameras_enabled", False))
+            cls._clone_physics_only = "kit" not in requested and not cameras_enabled
 
     @classmethod
     def reset(cls, soft: bool = False) -> None:
@@ -134,11 +141,12 @@ class NewtonManager(PhysicsManager):
 
     @classmethod
     def sync_transforms_to_usd(cls) -> None:
-        """Write Newton body_q to USD Fabric world matrices for Kit viewport rendering.
+        """Write Newton body_q to USD Fabric world matrices for Kit viewport / RTX rendering.
 
         No-op when ``_usdrt_stage`` is None (i.e. Kit visualizer is not active).
-        Called by :class:`~isaaclab.sim.scene_data_providers.NewtonSceneDataProvider`
-        at render cadence, after forward kinematics have been evaluated.
+        Called by :class:`~isaaclab.sim.scene_data_providers.NewtonSceneDataProvider` at render
+        cadence (Kit), and after each physics step when using Newton+RTX so the renderer sees
+        updated poses.
 
         Uses ``wp.fabricarray`` directly (no ``isaacsim.physics.newton`` extension needed).
         The Warp kernel reads ``state_0.body_q[newton_index[i]]`` and writes the
@@ -167,6 +175,11 @@ class NewtonManager(PhysicsManager):
                 device=PhysicsManager._device,
             )
             wp.synchronize_device(PhysicsManager._device)
+            if hasattr(usdrt, "hierarchy"):
+                fabric_hierarchy = usdrt.hierarchy.IFabricHierarchy().get_fabric_hierarchy(
+                    cls._usdrt_stage.GetFabricId(), cls._usdrt_stage.GetStageIdAsStageId()
+                )
+                fabric_hierarchy.update_world_xforms()
         except Exception as exc:
             logger.debug("[NewtonManager] sync_transforms_to_usd: %s", exc)
 
@@ -179,23 +192,25 @@ class NewtonManager(PhysicsManager):
 
         # Notify solver of model changes
         if cls._model_changes:
-            for change in cls._model_changes:
-                cls._solver.notify_model_changed(change)
-            cls._model_changes = set()
+            with wp.ScopedDevice(PhysicsManager._device):
+                for change in cls._model_changes:
+                    cls._solver.notify_model_changed(change)
+                cls._model_changes = set()
 
-        # Step simulation (graphed or not)
+        # Step simulation (graphed or not; _graph is None when RTX/Fabric sync is active or on CPU)
         cfg = PhysicsManager._cfg
-        if cfg is not None and cfg.use_cuda_graph:  # type: ignore[union-attr]
-            wp.capture_launch(cls._graph)  # type: ignore[arg-type]
+        if cfg is not None and cfg.use_cuda_graph and cls._graph is not None and "cuda" in PhysicsManager._device:  # type: ignore[union-attr]
+            wp.capture_launch(cls._graph)
         else:
-            cls._simulate()
+            with wp.ScopedDevice(PhysicsManager._device):
+                cls._simulate()
 
         # Debug convergence info
         if cfg is not None and cfg.debug_mode:  # type: ignore[union-attr]
             convergence_data = cls.get_solver_convergence_steps()
+            logger.info(f"Solver convergence data: {convergence_data}")
             if convergence_data["max"] == cls._solver.mjw_model.opt.iterations:
                 logger.warning(f"Solver didn't converge! max_iter={convergence_data['max']}")
-
         PhysicsManager._sim_time += cls._solver_dt * cls._num_substeps
 
     @classmethod
@@ -274,7 +289,6 @@ class NewtonManager(PhysicsManager):
         logger.info(f"Finalizing model on device: {device}")
         cls._builder.up_axis = Axis.from_string(cls._up_axis)
         # Set smaller contact margin for manipulation examples (default 10cm is too large)
-        cls._builder.default_shape_cfg.contact_margin = 0.01
         with Timer(name="newton_finalize_builder", msg="Finalize builder took:"):
             cls._model = cls._builder.finalize(device=device)
             cls._model.set_gravity(cls._gravity_vector)
@@ -292,8 +306,11 @@ class NewtonManager(PhysicsManager):
         if not cls._clone_physics_only:
             import usdrt
 
+            body_paths = getattr(cls._model, "body_label", None) or getattr(cls._model, "body_key", None)
+            if body_paths is None:
+                raise RuntimeError("NewtonManager: model has no body_label/body_key, skipping USD/Fabric sync for RTX.")
             cls._usdrt_stage = get_current_stage(fabric=True)
-            for i, prim_path in enumerate(cls._model.body_label):
+            for i, prim_path in enumerate(body_paths):
                 prim = cls._usdrt_stage.GetPrimAtPath(prim_path)
                 prim.CreateAttribute(cls._newton_index_attr, usdrt.Sdf.ValueTypeNames.UInt, True)
                 prim.GetAttribute(cls._newton_index_attr).Set(i)
@@ -305,13 +322,70 @@ class NewtonManager(PhysicsManager):
 
     @classmethod
     def instantiate_builder_from_stage(cls):
-        """Create builder from USD stage."""
+        """Create builder from USD stage.
+
+        Detects env Xforms (e.g. ``/World/Env_0``, ``/World/Env_1``) and builds
+        each as a separate Newton world via ``begin_world``/``end_world``.
+        Falls back to a flat ``add_usd`` when no env Xforms are found.
+        """
+        import re
+
         from pxr import UsdGeom
 
         stage = get_current_stage()
         up_axis = UsdGeom.GetStageUpAxis(stage)
+
+        # Scan /World children for env-like Xforms (Env_0, env_1, ...)
+        env_pattern = re.compile(r"^[Ee]nv_(\d+)$")
+        world_prim = stage.GetPrimAtPath("/World")
+        env_paths: list[tuple[int, str]] = []
+        if world_prim and world_prim.IsValid():
+            for child in world_prim.GetChildren():
+                m = env_pattern.match(child.GetName())
+                if m:
+                    env_paths.append((int(m.group(1)), child.GetPath().pathString))
+        env_paths.sort(key=lambda x: x[0])
+
         builder = ModelBuilder(up_axis=up_axis)
-        builder.add_usd(stage)
+
+        schema_resolvers = [SchemaResolverNewton(), SchemaResolverPhysx()]
+
+        if not env_paths:
+            # No env Xforms — flat loading
+            builder.add_usd(stage, schema_resolvers=schema_resolvers)
+        else:
+            # Load everything except the env subtrees (ground plane, lights, etc.)
+            ignore_paths = [path for _, path in env_paths]
+            builder.add_usd(stage, ignore_paths=ignore_paths, schema_resolvers=schema_resolvers)
+
+            # Build a prototype from the first env (all envs assumed identical)
+            _, proto_path = env_paths[0]
+            proto = ModelBuilder(up_axis=up_axis)
+            proto.add_usd(
+                stage,
+                root_path=proto_path,
+                schema_resolvers=schema_resolvers,
+            )
+
+            # Add each env as a separate Newton world
+            xform_cache = UsdGeom.XformCache()
+            for _, env_path in env_paths:
+                builder.begin_world()
+                world_xform = xform_cache.GetLocalToWorldTransform(stage.GetPrimAtPath(env_path))
+                translation = world_xform.ExtractTranslation()
+                rotation = world_xform.ExtractRotationQuat()
+                pos = (translation[0], translation[1], translation[2])
+                quat = (
+                    rotation.GetImaginary()[0],
+                    rotation.GetImaginary()[1],
+                    rotation.GetImaginary()[2],
+                    rotation.GetReal(),
+                )
+                builder.add_builder(proto, xform=wp.transform(pos, quat))
+                builder.end_world()
+
+            cls._num_envs = len(env_paths)
+
         cls.set_builder(builder)
 
     @classmethod
@@ -403,15 +477,19 @@ class NewtonManager(PhysicsManager):
             # Initialize contacts and collision pipeline
             cls._initialize_contacts()
 
-        # Ensure we are using a CUDA enabled device
         device = PhysicsManager._device
-        assert device.startswith("cuda"), "NewtonManager only supports CUDA enabled devices"
+
+        # Skip CUDA graph when syncing to USD/Fabric for RTX: capture conflicts with RTX/Replicator
+        # using the legacy stream (cudaErrorStreamCaptureImplicit).
+        use_cuda_graph = cfg.use_cuda_graph and (cls._usdrt_stage is None)  # type: ignore[union-attr]
 
         with Timer(name="newton_cuda_graph", msg="CUDA graph took:"):
-            if cfg.use_cuda_graph:  # type: ignore[union-attr]
+            if use_cuda_graph and "cuda" in device:
                 with wp.ScopedCapture() as capture:
                     cls._simulate()
                 cls._graph = capture.graph
+            else:
+                cls._graph = None
 
     @classmethod
     def _simulate(cls) -> None:
@@ -451,6 +529,10 @@ class NewtonManager(PhysicsManager):
             cls._solver.update_contacts(eval_contacts, cls._state_0)
             for sensor in cls._newton_contact_sensors.values():
                 sensor.update(cls._state_0, eval_contacts)
+
+        # Sync Newton state to USD/Fabric for RTX rendering (e.g., Newton Physics + RTX Renderer preset)
+        if cls._usdrt_stage is not None:
+            cls.sync_transforms_to_usd()
 
     @classmethod
     def get_solver_convergence_steps(cls) -> dict[str, float | int]:
@@ -501,22 +583,20 @@ class NewtonManager(PhysicsManager):
         shape_names_expr: str | list[str] | None = None,
         contact_partners_body_expr: str | list[str] | None = None,
         contact_partners_shape_expr: str | list[str] | None = None,
-        prune_noncolliding: bool = True,
         verbose: bool = False,
     ) -> tuple[str | list[str] | None, str | list[str] | None, str | list[str] | None, str | list[str] | None]:
         """Add a contact sensor for reporting contacts between bodies/shapes.
 
-        Note: Only one contact sensor can be active at a time.
+        Converts Isaac Lab pattern conventions (``.*`` regex, full USD paths) to
+        fnmatch globs and delegates to :class:`newton.sensors.SensorContact`.
 
         Args:
             body_names_expr: Expression for body names to sense.
             shape_names_expr: Expression for shape names to sense.
             contact_partners_body_expr: Expression for contact partner body names.
             contact_partners_shape_expr: Expression for contact partner shape names.
-            prune_noncolliding: Make force matrix sparse using collision pairs.
             verbose: Print verbose information.
         """
-        # Validate inputs
         if body_names_expr is None and shape_names_expr is None:
             raise ValueError("At least one of body_names_expr or shape_names_expr must be provided")
         if body_names_expr is not None and shape_names_expr is not None:
@@ -524,64 +604,63 @@ class NewtonManager(PhysicsManager):
         if contact_partners_body_expr is not None and contact_partners_shape_expr is not None:
             raise ValueError("Only one of contact_partners_body_expr or contact_partners_shape_expr must be provided")
 
-        # Log sensor configuration
         sensor_target = body_names_expr or shape_names_expr
         partner_filter = contact_partners_body_expr or contact_partners_shape_expr or "all bodies/shapes"
         logger.info(f"Adding contact sensor for {sensor_target} with filter {partner_filter}")
 
-        # Create unique key for this sensor
-        sensor_key = (body_names_expr, shape_names_expr, contact_partners_body_expr, contact_partners_shape_expr)
+        def _hashable_key(x):
+            return tuple(x) if isinstance(x, list) else x
 
-        def _to_fnmatch_patterns(expr: str | list[str] | None):
+        def _to_fnmatch(expr: str | list[str] | None) -> str | list[str] | None:
+            """Convert Isaac Lab regex expressions (``.*``) to fnmatch glob (``*``)."""
             if expr is None:
                 return None
             if isinstance(expr, str):
                 return expr.replace(".*", "*")
-            return [pattern.replace(".*", "*") for pattern in expr]
+            return [p.replace(".*", "*") for p in expr]
 
-        def _normalize_expr_for_model_labels(expr: str | list[str] | None, labels: list[str] | None):
+        def _normalize_for_labels(expr: str | list[str] | None, labels: list[str]) -> str | list[str] | None:
+            """Strip leading path components from *expr* when labels are bare names.
+
+            Model labels may be full USD paths (``/World/envs/env_0/Robot/base``) or bare
+            names (``base``).  When the labels are bare names but the user expression
+            contains slashes, we strip everything up to the last ``/``.
+            """
             if expr is None or not labels:
                 return expr
-            label_has_paths = any("/" in label for label in labels)
-            expr_list = [expr] if isinstance(expr, str) else list(expr)
-            expr_uses_paths = any("/" in pattern for pattern in expr_list)
+            label_has_paths = any("/" in lbl for lbl in labels)
+            items = [expr] if isinstance(expr, str) else list(expr)
+            expr_uses_paths = any("/" in p for p in items)
             if label_has_paths or not expr_uses_paths:
                 return expr
-            normalized = [pattern.rsplit("/", 1)[-1] for pattern in expr_list]
+            normalized = [p.rsplit("/", 1)[-1] for p in items]
             return normalized[0] if isinstance(expr, str) else normalized
 
-        model = cls._model
-        body_labels = getattr(model, "body_label", None) or getattr(model, "body_key", None)
-        shape_labels = getattr(model, "shape_label", None) or getattr(model, "shape_key", None)
-        sensing_obj_bodies = _normalize_expr_for_model_labels(_to_fnmatch_patterns(body_names_expr), body_labels)
-        sensing_obj_shapes = _normalize_expr_for_model_labels(_to_fnmatch_patterns(shape_names_expr), shape_labels)
-        counterpart_bodies = _normalize_expr_for_model_labels(
-            _to_fnmatch_patterns(contact_partners_body_expr), body_labels
-        )
-        counterpart_shapes = _normalize_expr_for_model_labels(
-            _to_fnmatch_patterns(contact_partners_shape_expr), shape_labels
+        sensor_key = (
+            _hashable_key(body_names_expr),
+            _hashable_key(shape_names_expr),
+            _hashable_key(contact_partners_body_expr),
+            _hashable_key(contact_partners_shape_expr),
         )
 
-        # Create and store the sensor
-        # Note: SensorContact constructor requests 'force' attribute from the model
-        newton_sensor = NewtonContactSensor(
-            cls._model,
-            sensing_obj_bodies=sensing_obj_bodies,
-            sensing_obj_shapes=sensing_obj_shapes,
-            counterpart_bodies=counterpart_bodies,
-            counterpart_shapes=counterpart_shapes,
-            include_total=True,
-            prune_noncolliding=prune_noncolliding,
-            verbose=verbose,
-        )
-        cls._newton_contact_sensors[sensor_key] = newton_sensor
+        body_labels = list(cls._model.body_label)
+        shape_labels = list(cls._model.shape_label)
+
+        with Timer(name="newton_contact_sensor", msg="Contact sensor construction took:"):
+            sensor = NewtonContactSensor(
+                cls._model,
+                sensing_obj_bodies=_normalize_for_labels(_to_fnmatch(body_names_expr), body_labels),
+                sensing_obj_shapes=_normalize_for_labels(_to_fnmatch(shape_names_expr), shape_labels),
+                counterpart_bodies=_normalize_for_labels(_to_fnmatch(contact_partners_body_expr), body_labels),
+                counterpart_shapes=_normalize_for_labels(_to_fnmatch(contact_partners_shape_expr), shape_labels),
+                include_total=True,
+                verbose=verbose,
+            )
+
+        cls._newton_contact_sensors[sensor_key] = sensor
         cls._report_contacts = True
 
-        # Regenerate contacts only if they were already created without force attribute
-        # If solver is not initialized, contacts will be created with force in initialize_solver()
-        if cls._solver is not None and cls._contacts is not None:
-            # Only regenerate if contacts don't have force attribute (sensor.update() requires it)
-            if cls._contacts.force is None:
-                cls._initialize_contacts()
+        if cls._solver is not None and cls._contacts is not None and cls._contacts.force is None:
+            cls._initialize_contacts()
 
         return sensor_key

@@ -61,23 +61,9 @@ if args_cli.video:
 # clear out sys.argv for Hydra
 sys.argv = [sys.argv[0]] + hydra_args
 
-from scripts.benchmarks.utils import needs_kit
-
-_needs_kit = needs_kit(hydra_args)
-
-app_start_time_begin = time.perf_counter_ns()
-
-if _needs_kit:
-    app_launcher = AppLauncher(args_cli)
-    simulation_app = app_launcher.app
-else:
-    app_launcher = None
-    simulation_app = None
-
-app_start_time_end = time.perf_counter_ns()
-
 imports_time_begin = time.perf_counter_ns()
 
+import importlib.metadata as metadata
 from datetime import datetime
 
 import gymnasium as gym
@@ -89,10 +75,10 @@ from isaaclab.envs import DirectMARLEnvCfg, DirectRLEnvCfg, ManagerBasedRLEnvCfg
 from isaaclab.utils.dict import print_dict
 from isaaclab.utils.io import dump_yaml
 
-from isaaclab_rl.rsl_rl import RslRlOnPolicyRunnerCfg, RslRlVecEnvWrapper
+from isaaclab_rl.rsl_rl import RslRlOnPolicyRunnerCfg, RslRlVecEnvWrapper, handle_deprecated_rsl_rl_cfg
 
 import isaaclab_tasks  # noqa: F401
-from isaaclab_tasks.utils import get_checkpoint_path, hydra_task_config
+from isaaclab_tasks.utils import get_checkpoint_path, launch_simulation, resolve_task_config
 
 imports_time_end = time.perf_counter_ns()
 
@@ -140,8 +126,12 @@ benchmark = BaseIsaacLabBenchmark(
 )
 
 
-@hydra_task_config(args_cli.task, "rsl_rl_cfg_entry_point")
-def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agent_cfg: RslRlOnPolicyRunnerCfg):
+def main(
+    env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg,
+    agent_cfg: RslRlOnPolicyRunnerCfg,
+    app_start_time_begin: int,
+    app_start_time_end: int,
+):
     """Train with RSL-RL agent."""
     # parse configuration
     # override configurations with non-hydra CLI arguments
@@ -210,6 +200,9 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
 
     task_startup_time_end = time.perf_counter_ns()
 
+    # handle deprecated configurations (e.g. legacy policy -> actor/critic migration)
+    agent_cfg = handle_deprecated_rsl_rl_cfg(agent_cfg, metadata.version("rsl-rl-lib"))
+
     # create runner from rsl-rl
     runner = OnPolicyRunner(env, agent_cfg.to_dict(), log_dir=log_dir, device=agent_cfg.device)
     # write git state to logs
@@ -243,13 +236,13 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
         # prepare RL timing dict
         collection_fps = (
             1
-            / (np.array(log_data["Perf/collection time"]))
+            / (np.array(log_data["Perf/collection_time"]))
             * env.unwrapped.num_envs
             * agent_cfg.num_steps_per_env
             * world_size
         )
         rl_training_times = {
-            "Collection Time": (np.array(log_data["Perf/collection time"]) / 1000).tolist(),
+            "Collection Time": (np.array(log_data["Perf/collection_time"]) / 1000).tolist(),
             "Learning Time": (np.array(log_data["Perf/learning_time"]) / 1000).tolist(),
             "Collection FPS": collection_fps.tolist(),
             "Total FPS": log_data["Perf/total_fps"] * world_size,
@@ -273,8 +266,9 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
 
 
 if __name__ == "__main__":
-    # run the main function
-    main()
-    # close sim app
-    if simulation_app is not None:
-        simulation_app.close()
+    env_cfg, agent_cfg = resolve_task_config(args_cli.task, "rsl_rl_cfg_entry_point")
+
+    app_start_time_begin = time.perf_counter_ns()
+    with launch_simulation(env_cfg, args_cli):
+        app_start_time_end = time.perf_counter_ns()
+        main(env_cfg, agent_cfg, app_start_time_begin, app_start_time_end)
