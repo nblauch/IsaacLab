@@ -137,6 +137,11 @@ class DirectRLEnv(gym.Env):
                 self._setup_scene()
         print("[INFO]: Scene manager: ", self.scene)
 
+        # Re-resolve scene data requirements for sensors added during _setup_scene().
+        # InteractiveScene resolves requirements during __init__, but sensors added
+        # afterwards (e.g. TiledCamera with Newton renderer) are missed.
+        self._update_scene_data_requirements_from_sensors()
+
         # set up camera viewport controller
         # viewport is not available in other rendering modes so the function will throw a warning
         # FIXME: This needs to be fixed in the future when we unify the UI functionalities even for
@@ -630,6 +635,38 @@ class DirectRLEnv(gym.Env):
     """
     Implementation-specific functions.
     """
+
+    def _update_scene_data_requirements_from_sensors(self):
+        """Resolve renderer requirements for sensors added during :meth:`_setup_scene`.
+
+        ``InteractiveScene.__init__`` resolves renderer requirements for sensors declared in
+        the scene config, but sensors added programmatically in ``_setup_scene`` (the common
+        pattern in DirectRLEnv subclasses) are not captured. This method re-scans all scene
+        sensors and updates the simulation context so that backends like
+        ``PhysxSceneDataProvider`` know they must build a Newton model for Newton-based
+        renderers.
+        """
+        from isaaclab.physics.scene_data_requirements import (
+            aggregate_requirements,
+            requirement_for_renderer_type,
+        )
+
+        renderer_types: list[str] = []
+        for sensor in self.scene.sensors.values():
+            sensor_cfg = getattr(sensor, "cfg", None)
+            renderer_cfg = getattr(sensor_cfg, "renderer_cfg", None)
+            if renderer_cfg is None:
+                continue
+            renderer_type = getattr(renderer_cfg, "renderer_type", "default")
+            if renderer_type != "default":
+                renderer_types.append(renderer_type)
+
+        if renderer_types:
+            existing = self.sim.get_scene_data_requirements()
+            new_reqs = aggregate_requirements(
+                [existing] + [requirement_for_renderer_type(rt) for rt in renderer_types]
+            )
+            self.sim.update_scene_data_requirements(new_reqs)
 
     def _setup_scene(self):
         """Setup the scene for the environment.
