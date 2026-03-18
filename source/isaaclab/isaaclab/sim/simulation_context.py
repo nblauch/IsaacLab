@@ -676,6 +676,21 @@ class SimulationContext:
             for callback in self._render_callbacks.values():
                 callback(None)  # Pass None as event data
 
+        # When running with Isaac Sim (Kit) and no active visualizer already pumps the Kit
+        # app loop, call app.update() so the viewport and replicator render products
+        # (used e.g. by gym.wrappers.RecordVideo with render_mode="rgb_array") are refreshed.
+        # KitVisualizer.pumps_app_update() returns True and calls app.update() in its own
+        # step(), so we skip this call to avoid double-rendering in that case.
+        if has_kit() and not any(v.pumps_app_update() for v in self._visualizers):
+            try:
+                import omni.kit.app
+
+                app = omni.kit.app.get_app()
+                if app is not None and app.is_running():
+                    app.update()
+            except (ImportError, AttributeError):
+                pass
+
     def update_visualizers(self, dt: float) -> None:
         """Update visualizers without triggering renderer/GUI."""
         if not self._visualizers:

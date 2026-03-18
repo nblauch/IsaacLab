@@ -290,6 +290,67 @@ def test_render():
     assert sim.is_playing()
 
 
+@pytest.mark.isaacsim_ci
+def test_render_pumps_app_update_without_visualizer():
+    """Regression test for issue #5052: render() must call app.update() when no visualizer pumps the Kit loop.
+
+    Without this call, replicator render products (used by gym.wrappers.RecordVideo for
+    rgb_array rendering) are never updated, producing black video frames.
+    """
+    from unittest.mock import MagicMock, patch
+
+    cfg = SimulationCfg(dt=0.01)
+    sim = SimulationContext(cfg)
+    sim.reset()
+
+    mock_app = MagicMock()
+    mock_app.is_running.return_value = True
+
+    with patch("omni.kit.app.get_app", return_value=mock_app):
+        sim.render()
+
+    # app.update() must be called when no visualizer pumps the Kit app loop
+    mock_app.update.assert_called_once()
+
+
+@pytest.mark.isaacsim_ci
+def test_render_skips_app_update_when_visualizer_pumps_it():
+    """Regression test: render() must NOT call app.update() when a visualizer already does.
+
+    A visualizer that returns ``pumps_app_update() == True`` (e.g. KitVisualizer) calls
+    ``app.update()`` in its own ``step()``, so ``SimulationContext.render()`` must not
+    call it again to avoid double-rendering.
+    """
+    from unittest.mock import MagicMock, patch
+
+    from isaaclab.visualizers.base_visualizer import BaseVisualizer
+
+    cfg = SimulationCfg(dt=0.01)
+    sim = SimulationContext(cfg)
+    sim.reset()
+
+    # Inject a mock visualizer that pumps the app update
+    mock_viz = MagicMock(spec=BaseVisualizer)
+    mock_viz.pumps_app_update.return_value = True
+    mock_viz.is_closed = False
+    mock_viz.is_running.return_value = True
+    mock_viz.is_rendering_paused.return_value = False
+    mock_viz.is_training_paused.return_value = False
+    mock_viz.get_rendering_dt.return_value = None
+    sim._visualizers = [mock_viz]
+
+    mock_app = MagicMock()
+    mock_app.is_running.return_value = True
+
+    with patch("omni.kit.app.get_app", return_value=mock_app):
+        sim.render()
+
+    # app.update() must NOT be called since the visualizer already pumps it
+    mock_app.update.assert_not_called()
+
+    sim._visualizers = []
+
+
 """
 Stage Operations Tests
 """
