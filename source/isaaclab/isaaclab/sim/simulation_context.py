@@ -625,10 +625,91 @@ class SimulationContext:
                 return float(viz_dt)
         return self._viz_dt
 
-    def set_camera_view(self, eye: tuple, target: tuple) -> None:
-        """Set camera view on all visualizers that support it."""
+    def set_camera_view(
+        self, eye: tuple, target: tuple, camera_prim_path: str = "/OmniverseKit_Persp"
+    ) -> None:
+        """Set camera view on all visualizers that support it.
+
+        When no visualizer is active (e.g. headless rendering with ``--viz none``),
+        falls back to setting the camera prim transform directly via USD so that
+        ``rep.create.render_product`` picks up the correct viewpoint.
+        """
         for viz in self._visualizers:
             viz.set_camera_view(eye, target)
+
+        # Fallback: when no visualizer is active, position the camera prim directly.
+        if not self._visualizers and (self._has_gui or self._has_offscreen_render):
+            # Try the viewport utility first (works when omni.kit.viewport.rtx is loaded).
+            positioned = False
+            try:
+                from omni.kit.viewport.utility import get_active_viewport
+
+                viewport_api = get_active_viewport()
+                if viewport_api is not None:
+                    from isaacsim.core.utils.viewports import set_camera_view
+
+                    set_camera_view(eye, target, camera_prim_path, viewport_api)
+                    positioned = True
+            except (ImportError, Exception):
+                pass
+
+            # If no active viewport (common in headless mode), set the camera
+            # prim transform directly via USD so rep.create.render_product picks
+            # up the correct viewpoint.
+            if not positioned:
+                self._set_camera_prim_via_usd(eye, target, camera_prim_path)
+
+    @staticmethod
+    def _set_camera_prim_via_usd(
+        eye: tuple, target: tuple, camera_prim_path: str = "/OmniverseKit_Persp"
+    ) -> None:
+        """Set a camera prim's transform directly via USD (no viewport API needed).
+
+        Computes a look-at matrix from *eye* → *target* and writes it as the
+        camera prim's local transform.  This is the headless-safe fallback used
+        when the viewport utility cannot position the camera (e.g. no active
+        viewport in ``--headless`` mode).
+
+        Note: Default cameras (e.g. ``/OmniverseKit_Persp``) typically live on
+        the session layer, so edits are written there.
+        """
+        stage = stage_utils.get_current_stage()
+        if stage is None:
+            return
+
+        prim = stage.GetPrimAtPath(camera_prim_path)
+        if not prim.IsValid():
+            return
+
+        eye_v = Gf.Vec3d(*[float(v) for v in eye])
+        target_v = Gf.Vec3d(*[float(v) for v in target])
+
+        # Build a look-at rotation: camera looks along -Z in its local frame.
+        forward = (target_v - eye_v).GetNormalized()
+        up_hint = Gf.Vec3d(0, 0, 1)
+        right = Gf.Cross(forward, up_hint)
+        if right.GetLength() < 1e-6:
+            up_hint = Gf.Vec3d(0, 1, 0)
+            right = Gf.Cross(forward, up_hint)
+        right = right.GetNormalized()
+        up = Gf.Cross(right, forward).GetNormalized()
+
+        # USD camera convention: -Z is forward, +Y is up, +X is right.
+        rot = Gf.Matrix3d()
+        rot.SetColumn(0, right)
+        rot.SetColumn(1, up)
+        rot.SetColumn(2, -forward)
+
+        mat = Gf.Matrix4d()
+        mat.SetRotate(rot)
+        mat.SetTranslateOnly(eye_v)
+
+        # Write to the session layer where default cameras typically live.
+        with Usd.EditContext(stage, stage.GetSessionLayer()):
+            xformable = UsdGeom.Xformable(prim)
+            xformable.ClearXformOpOrder()
+            xform_op = xformable.AddTransformOp()
+            xform_op.Set(mat, Usd.TimeCode.Default())
 
     def forward(self) -> None:
         """Update kinematics without stepping physics."""
