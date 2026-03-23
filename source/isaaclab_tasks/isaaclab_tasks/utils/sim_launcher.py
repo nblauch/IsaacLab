@@ -219,13 +219,18 @@ def launch_simulation(
         settings.set_bool("/isaaclab/visualizer/explicit", True)
         settings.set_bool("/isaaclab/visualizer/disable_all", disable_all)
 
+    _had_error = False
     try:
         yield
     except Exception:
         import traceback
 
         traceback.print_exc()
+        _had_error = True
         raise
     finally:
         if close_fn is not None:
             close_fn()
+        if _had_error:
+            import sys
+            sys.exit(1)
