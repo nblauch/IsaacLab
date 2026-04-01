@@ -1,6 +1,35 @@
 Changelog
 ---------
 
+0.5.13 (2026-03-25)
+~~~~~~~~~~~~~~~~~~~
+
+Fixed
+^^^^^
+
+* Fixed device mismatch in :meth:`~isaaclab_physx.assets.RigidObjectCollection.reshape_view_to_data_2d`
+  and :meth:`~isaaclab_physx.assets.RigidObjectCollection.reshape_view_to_data_3d` that caused
+  ``wp.clone`` to fail with CUDA errors when PhysX returns data on CPU (e.g., masses, COMs, inertias)
+  while the simulation runs on GPU. The strided view now correctly uses ``data.device`` instead of
+  ``self.device``, matching the fix already present in :class:`~isaaclab_physx.assets.RigidObjectCollectionData`.
+
+
+0.5.12 (2026-03-16)
+~~~~~~~~~~~~~~~~~~~
+
+Fixed
+^^^^^
+
+* Fixed ``test_body_incoming_joint_wrench_b_single_joint`` computing the expected
+  wrench in the parent body's frame instead of the child body's frame. The expected
+  wrench is now expressed in
+  :attr:`~isaaclab_physx.assets.ArticulationData.body_incoming_joint_wrench_b`'s
+  actual convention (child body frame) and body indices are resolved by name to be
+  robust across backends. Also corrected the docstring for
+  :attr:`~isaaclab_physx.assets.ArticulationData.body_incoming_joint_wrench_b` to
+  accurately describe the frame convention.
+
+
 0.5.11 (2026-03-13)
 ~~~~~~~~~~~~~~~~~~~
 

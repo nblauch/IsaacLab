@@ -1,6 +1,56 @@
 Changelog
 ---------
 
+1.5.17 (2026-03-30)
+~~~~~~~~~~~~~~~~~~~
+
+Fixed
+^^^^^
+
+* Fixed :func:`~isaaclab_tasks.utils.hydra.apply_overrides` raising a false
+  conflict error when two global presets resolve to the same value for a path
+  (e.g. ``newton`` aliased to ``cube``).
+
+
+1.5.16 (2026-03-24)
+~~~~~~~~~~~~~~~~~~~
+
+Fixed
+^^^^^
+
+* Fixed :func:`~isaaclab_tasks.utils.hydra.collect_presets` not discovering
+  presets inside nested dicts (e.g. ``EventTerm.params.terms.*.params``).
+
+
+1.5.15 (2026-03-25)
+~~~~~~~~~~~~~~~~~~~
+
+Added
+^^^^^
+
+* Added semantic segmentation to preset data types for the Cartpole Camera environment.
+* Added semantic segmentation to preset data types for the Shadow Hand environment.
+* Added semantic_segmentation64 to preset data types for for the Dexsuite Kuka-Allegro environment.
+
+1.5.13 (2026-03-18)
+~~~~~~~~~~~~~~~~~~~
+
+Added
+^^^^^
+
+* Added consistency validation to the camera outputs in ``test_rendering_correctness.py``.
+
+
+1.5.12 (2026-03-16)
+~~~~~~~~~~~~~~~~~~~
+
+Changed
+^^^^^^^
+
+* Increased ``max_iterations`` from 200 to 300 for ``Isaac-Dexsuite-Kuka-Allegro-Lift-v0``
+  in the benchmarking configuration to allow sufficient training time for convergence.
+
+
 1.5.11 (2026-03-13)
 ~~~~~~~~~~~~~~~~~~~
 
@@ -20,6 +70,7 @@ Added
 ^^^^^
 
 * Added ``test_rendering_correctness.py`` to validate rendering correctness of the environments.
+
 
 1.5.9 (2026-03-10)
 ~~~~~~~~~~~~~~~~~~
@@ -155,7 +206,6 @@ Changed
   Newton-compatible randomizations (joint gains, joint position limits, object mass, gravity).
   Material and fixed-tendon randomization remain exclusively in
   :class:`~isaaclab_tasks.direct.shadow_hand.shadow_hand_env_cfg.PhysxEventCfg`.
-
 
 1.5.2 (2026-03-05)
 ~~~~~~~~~~~~~~~~~~

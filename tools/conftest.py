@@ -23,10 +23,19 @@ def pytest_ignore_collect(collection_path, config):
     return True
 
 
+# TODO: SimulationApp.close() can hang indefinitely in some tests (especially those using
+# cameras or render products), causing CI timeouts. A fix that detects test completion via
+# the JUnit XML report file and kills the process after a grace period was prototyped in
+# https://github.com/isaac-sim/IsaacLab/pull/5097 — see commits:
+#   242315b3722 Handle hanging subprocesses causing timeouts
+#   bd4953019ab Add comment explaining intentional return 0 in shutdown-hang path
+# A per-test-file conftest.py using atexit.register(os._exit) was also tried:
+#   6840e5a3aeb Force stalled test subprocesses that hang after SimulationApp.close()
 def capture_test_output_with_timeout(cmd, timeout, env):
     """Run a command with timeout and capture all output while streaming in real-time."""
     stdout_data = b""
     stderr_data = b""
+    process = None
 
     try:
         # Use Popen to capture output in real-time
@@ -91,15 +100,29 @@ def capture_test_output_with_timeout(cmd, timeout, env):
                 time.sleep(0.1)
                 continue
 
-        # Get any remaining output
-        remaining_stdout, remaining_stderr = process.communicate()
-        stdout_data += remaining_stdout
-        stderr_data += remaining_stderr
+        # Drain any output the process wrote before or just after exiting.
+        # Wrapped in try/except so a pipe error doesn't discard what was already captured.
+        try:
+            remaining_stdout, remaining_stderr = process.communicate(timeout=10)
+            stdout_data += remaining_stdout
+            stderr_data += remaining_stderr
+        except Exception:
+            pass
 
         return process.returncode, stdout_data, stderr_data, False
 
     except Exception as e:
-        return -1, str(e).encode(), b"", False
+        # Kill the process if it is still alive, then drain whatever it wrote.
+        if process is not None and process.poll() is None:
+            process.kill()
+            with contextlib.suppress(Exception):
+                rem_out, rem_err = process.communicate(timeout=5)
+                stdout_data += rem_out
+                stderr_data += rem_err
+        # Append the exception message so the caller can see what went wrong,
+        # but preserve any output already captured.
+        stdout_data += f"\n[capture error: {e}]\n".encode()
+        return -1, stdout_data, stderr_data, False
 
 
 def create_timeout_test_case(test_file, timeout, stdout_data, stderr_data):
@@ -133,6 +156,7 @@ def run_individual_tests(test_files, workspace_root, isaacsim_ci):
     """Run each test file separately, ensuring one finishes before starting the next."""
     failed_tests = []
     test_status = {}
+    xml_reports = []  # in-memory JUnitXml objects, used to build the merged report
 
     for test_file in test_files:
         print(f"\n\n🚀 Running {test_file} independently...\n")
@@ -147,7 +171,6 @@ def run_individual_tests(test_files, workspace_root, isaacsim_ci):
         # Note: Command options matter as they are used for cleanups inside AppLauncher
         cmd = [
             sys.executable,
-            "-u",
             "-m",
             "pytest",
             "--no-header",
@@ -178,6 +201,7 @@ def run_individual_tests(test_files, workspace_root, isaacsim_ci):
             # Write timeout report
             report_file = f"tests/test-reports-{str(file_name)}.xml"
             timeout_report.write(report_file)
+            xml_reports.append(timeout_report)
 
             test_status[test_file] = {
                 "errors": 1,
@@ -195,14 +219,46 @@ def run_individual_tests(test_files, workspace_root, isaacsim_ci):
         # check report for any failures
         report_file = f"tests/test-reports-{str(file_name)}.xml"
         if not os.path.exists(report_file):
-            print(f"Warning: Test report not found at {report_file}")
+            if returncode < 0:
+                sig = -returncode
+                reason = f"Process killed by signal {sig}"
+                if sig == 9:
+                    reason += " (SIGKILL — likely OOM killed)"
+                elif sig == 6:
+                    reason += " (SIGABRT)"
+                print(f"⚠️  {test_file}: {reason}")
+            else:
+                reason = f"Process exited with code {returncode} but produced no report"
+                print(f"Warning: Test report not found at {report_file}")
+
+            crash_suite = TestSuite(name=f"crash_{os.path.splitext(file_name)[0]}")
+            crash_case = TestCase(
+                name="test_execution",
+                classname=os.path.splitext(file_name)[0],
+            )
+            details = f"{reason}\n\n"
+            if stdout_data:
+                details += "=== STDOUT (last 2000 chars) ===\n"
+                details += stdout_data.decode("utf-8", errors="replace")[-2000:] + "\n"
+            if stderr_data:
+                details += "=== STDERR (last 2000 chars) ===\n"
+                details += stderr_data.decode("utf-8", errors="replace")[-2000:] + "\n"
+            error = Error(message=reason)
+            error.text = details
+            crash_case.result = error
+            crash_suite.add_testcase(crash_case)
+            crash_report = JUnitXml()
+            crash_report.add_testsuite(crash_suite)
+            crash_report.write(report_file)
+            xml_reports.append(crash_report)
+
             failed_tests.append(test_file)
             test_status[test_file] = {
-                "errors": 1,  # Assume error since we can't read the report
+                "errors": 1,
                 "failures": 0,
                 "skipped": 0,
-                "tests": 0,
-                "result": "FAILED",
+                "tests": 1,
+                "result": "CRASHED",
                 "time_elapsed": 0.0,
             }
             continue
@@ -219,6 +275,7 @@ def run_individual_tests(test_files, workspace_root, isaacsim_ci):
 
             # Write the updated report back
             report.write(report_file)
+            xml_reports.append(report)
 
             # Parse the integer values with None handling
             errors = int(report.errors) if report.errors is not None else 0
@@ -254,7 +311,7 @@ def run_individual_tests(test_files, workspace_root, isaacsim_ci):
 
     print("~~~~~~~~~~~~ Finished running all tests")
 
-    return failed_tests, test_status
+    return failed_tests, test_status, xml_reports
 
 
 def _collect_test_files(
@@ -262,10 +319,8 @@ def _collect_test_files(
     filter_pattern,
     exclude_pattern,
     include_files,
-    flaky_only,
-    slightly_flaky_only,
+    quarantined_only,
     curobo_only,
-    cuda_issue_only,
 ):
     """Collect test files from source directories, applying all active filters."""
     test_files = []
@@ -280,17 +335,11 @@ def _collect_test_files(
                     continue
 
                 # Mode-exclusive filters (each bypasses TESTS_TO_SKIP)
-                if flaky_only:
-                    if file not in test_settings.FLAKY_TESTS:
-                        continue
-                elif slightly_flaky_only:
-                    if file not in test_settings.SLIGHTLY_FLAKY_TESTS:
+                if quarantined_only:
+                    if file not in test_settings.QUARANTINED_TESTS:
                         continue
                 elif curobo_only:
                     if file not in test_settings.CUROBO_TESTS:
-                        continue
-                elif cuda_issue_only:
-                    if file not in test_settings.CUDA_ISSUE_TESTS:
                         continue
                 else:
                     # An explicit include_files entry overrides TESTS_TO_SKIP, allowing
@@ -305,7 +354,7 @@ def _collect_test_files(
                 if filter_pattern and filter_pattern not in full_path:
                     print(f"Skipping {full_path} (does not match include pattern: {filter_pattern})")
                     continue
-                if exclude_pattern and exclude_pattern in full_path:
+                if exclude_pattern and any(p.strip() in full_path for p in exclude_pattern.split(",")):
                     print(f"Skipping {full_path} (matches exclude pattern: {exclude_pattern})")
                     continue
                 if include_files and file not in include_files:
@@ -313,7 +362,29 @@ def _collect_test_files(
                     continue
 
                 test_files.append(full_path)
+
+    # Apply file-level sharding: sort deterministically, then select every Nth file.
+    # Skip when include_files is set — in that case the test's own conftest handles
+    # sharding at the test-item level (e.g. parametrized test cases).
+    shard_index = os.environ.get("TEST_SHARD_INDEX", "")
+    shard_count = os.environ.get("TEST_SHARD_COUNT", "")
+    if shard_index and shard_count and not include_files:
+        shard_index = int(shard_index)
+        shard_count = int(shard_count)
+        test_files.sort()
+        test_files = [f for i, f in enumerate(test_files) if i % shard_count == shard_index]
+        print(f"Shard {shard_index}/{shard_count}: selected {len(test_files)} test files")
+
     return test_files
+
+
+def _write_empty_report():
+    """Write an empty JUnit XML report so downstream CI steps find a valid file."""
+    os.makedirs("tests", exist_ok=True)
+    result_file = os.environ.get("TEST_RESULT_FILE", "full_report.xml")
+    report = JUnitXml()
+    report.write(f"tests/{result_file}")
+    print(f"Wrote empty report to tests/{result_file}")
 
 
 def pytest_sessionstart(session):
@@ -329,10 +400,8 @@ def pytest_sessionstart(session):
     filter_pattern = os.environ.get("TEST_FILTER_PATTERN", "")
     exclude_pattern = os.environ.get("TEST_EXCLUDE_PATTERN", "")
     include_files_str = os.environ.get("TEST_INCLUDE_FILES", "")
+    quarantined_only = os.environ.get("TEST_QUARANTINED_ONLY", "false") == "true"
     curobo_only = os.environ.get("TEST_CUROBO_ONLY", "false") == "true"
-    cuda_issue_only = os.environ.get("TEST_CUDA_ISSUE_ONLY", "false") == "true"
-    flaky_only = os.environ.get("TEST_FLAKY_ONLY", "false") == "true"
-    slightly_flaky_only = os.environ.get("TEST_SLIGHTLY_FLAKY_ONLY", "false") == "true"
 
     isaacsim_ci = os.environ.get("ISAACSIM_CI_SHORT", "false") == "true"
 
@@ -356,17 +425,13 @@ def pytest_sessionstart(session):
     print(f"Filter pattern: '{filter_pattern}'")
     print(f"Exclude pattern: '{exclude_pattern}'")
     print(f"Include files: {include_files if include_files else 'none'}")
+    print(f"Quarantined-only mode: {quarantined_only}")
     print(f"Curobo-only mode: {curobo_only}")
-    print(f"CUDA-issue-only mode: {cuda_issue_only}")
-    print(f"Flaky-only mode: {flaky_only}")
-    print(f"Slightly-flaky-only mode: {slightly_flaky_only}")
     print(f"TEST_FILTER_PATTERN env var: '{os.environ.get('TEST_FILTER_PATTERN', 'NOT_SET')}'")
     print(f"TEST_EXCLUDE_PATTERN env var: '{os.environ.get('TEST_EXCLUDE_PATTERN', 'NOT_SET')}'")
     print(f"TEST_INCLUDE_FILES env var: '{os.environ.get('TEST_INCLUDE_FILES', 'NOT_SET')}'")
+    print(f"TEST_QUARANTINED_ONLY env var: '{os.environ.get('TEST_QUARANTINED_ONLY', 'NOT_SET')}'")
     print(f"TEST_CUROBO_ONLY env var: '{os.environ.get('TEST_CUROBO_ONLY', 'NOT_SET')}'")
-    print(f"TEST_CUDA_ISSUE_ONLY env var: '{os.environ.get('TEST_CUDA_ISSUE_ONLY', 'NOT_SET')}'")
-    print(f"TEST_FLAKY_ONLY env var: '{os.environ.get('TEST_FLAKY_ONLY', 'NOT_SET')}'")
-    print(f"TEST_SLIGHTLY_FLAKY_ONLY env var: '{os.environ.get('TEST_SLIGHTLY_FLAKY_ONLY', 'NOT_SET')}'")
     print("=" * 50)
 
     # Get all test files in the source directories
@@ -375,10 +440,8 @@ def pytest_sessionstart(session):
         filter_pattern,
         exclude_pattern,
         include_files,
-        flaky_only,
-        slightly_flaky_only,
+        quarantined_only,
         curobo_only,
-        cuda_issue_only,
     )
 
     if isaacsim_ci:
@@ -390,6 +453,14 @@ def pytest_sessionstart(session):
         test_files = new_test_files
 
     if not test_files:
+        if quarantined_only:
+            print("No quarantined tests configured — nothing to run.")
+            _write_empty_report()
+            pytest.exit("No quarantined tests configured", returncode=0)
+        if filter_pattern:
+            print(f"No test files found matching filter pattern '{filter_pattern}' — nothing to run.")
+            _write_empty_report()
+            pytest.exit("No test files found for filter", returncode=0)
         print("No test files found in source directory")
         pytest.exit("No test files found", returncode=1)
 
@@ -398,21 +469,20 @@ def pytest_sessionstart(session):
         print(f"  - {test_file}")
 
     # Run all tests individually
-    failed_tests, test_status = run_individual_tests(test_files, workspace_root, isaacsim_ci)
+    failed_tests, test_status, xml_reports = run_individual_tests(test_files, workspace_root, isaacsim_ci)
 
     print("failed tests:", failed_tests)
 
     # Collect reports
     print("~~~~~~~~~ Collecting final report...")
 
-    # create new full report
+    # Merge in-memory report objects collected during the test run.  Reading the
+    # on-disk files again risks losing <failure> elements if the junitparser
+    # read/write round-trip does not preserve them faithfully.
     full_report = JUnitXml()
-    # read all reports and merge them
-    for report in os.listdir("tests"):
-        if report.endswith(".xml"):
-            print(report)
-            report_file = JUnitXml.fromfile(f"tests/{report}")
-            full_report += report_file
+    for xml_report in xml_reports:
+        print(xml_report)
+        full_report += xml_report
     print("~~~~~~~~~~~~ Writing final report...")
     # write content to full report
     result_file = os.environ.get("TEST_RESULT_FILE", "full_report.xml")
@@ -427,6 +497,7 @@ def pytest_sessionstart(session):
     num_passing = len([test_path for test_path in test_files if test_status[test_path]["result"] == "passed"])
     num_failing = len([test_path for test_path in test_files if test_status[test_path]["result"] == "FAILED"])
     num_timeout = len([test_path for test_path in test_files if test_status[test_path]["result"] == "TIMEOUT"])
+    num_crashed = len([test_path for test_path in test_files if test_status[test_path]["result"] == "CRASHED"])
 
     if num_tests == 0:
         passing_percentage = 100
@@ -442,6 +513,7 @@ def pytest_sessionstart(session):
     summary_str += f"Total: {num_tests}\n"
     summary_str += f"Passing: {num_passing}\n"
     summary_str += f"Failing: {num_failing}\n"
+    summary_str += f"Crashed: {num_crashed}\n"
     summary_str += f"Timeout: {num_timeout}\n"
     summary_str += f"Passing Percentage: {passing_percentage:.2f}%\n"
 
@@ -482,4 +554,7 @@ def pytest_sessionstart(session):
     print(summary_str)
 
     # Exit pytest after custom execution to prevent normal pytest from overwriting our report
-    pytest.exit("Custom test execution completed", returncode=0 if num_failing == 0 else 1)
+    pytest.exit(
+        "Custom test execution completed",
+        returncode=0 if (num_failing == 0 and num_timeout == 0 and num_crashed == 0) else 1,
+    )
