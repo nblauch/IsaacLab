@@ -437,7 +437,7 @@ class DexsuiteReorientEnvCfg(ManagerBasedEnvCfg):
                 " Use a single-geometry object preset (e.g. presets=cube) instead of 'shapes'."
             )
 
-        warp_supported = {"rgb", "depth", "distance_to_image_plane"}
+        warp_supported = {"rgb", "depth", "distance_to_image_plane", "instance_segmentation_fast"}
         for cam_attr in ("base_camera", "wrist_camera"):
             cam = getattr(self.scene, cam_attr, None)
             if cam is None:
