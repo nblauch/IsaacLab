@@ -91,7 +91,7 @@ class RenderCfg:
     This is set by the variable: ``/rtx-transient/dldenoiser/enabled``.
     """
 
-    dlss_mode: Literal[0, 1, 2, 3] | None = None
+    dlss_mode: int | None = None
     """For DLSS anti-aliasing, selects the performance/quality tradeoff mode. Default is 0.
 
     Valid values are:
@@ -132,7 +132,7 @@ class RenderCfg:
     This is set by the variable: ``/rtx/ambientOcclusion/enabled``.
     """
 
-    dome_light_upper_lower_strategy: Literal[0, 3, 4] | None = None
+    dome_light_upper_lower_strategy: int | None = None
     """Selects how to sample the Dome Light. Default is 0.
     For more information, refer to the `documentation`_.
 
@@ -189,7 +189,7 @@ class RenderCfg:
     This is set by the variable: ``/rtx/sceneDb/ambientLightIntensity``.
     """
 
-    ambient_occlusion_denoiser_mode: Literal[0, 1] | None = None
+    ambient_occlusion_denoiser_mode: int | None = None
     """Ambient occlusion denoiser mode. Default is 1.
 
     Valid values are:
@@ -200,7 +200,7 @@ class RenderCfg:
     This is set by the variable: ``/rtx/ambientOcclusion/denoiserMode``.
     """
 
-    subpixel_mode: Literal[0, 1] | None = None
+    subpixel_mode: int | None = None
     """Raytracing subpixel mode. Default is 0.
 
     Valid values are:

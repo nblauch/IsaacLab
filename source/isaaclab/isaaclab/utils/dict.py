@@ -156,7 +156,7 @@ def update_class_from_dict(obj, data: dict[str, Any], _ns: str = "") -> None:
                     )
 
             # -- 4) simple scalar / explicit None ---------------------
-            elif value is None or isinstance(value, type(obj_mem)):
+            elif value is None or obj_mem is None or isinstance(value, type(obj_mem)):
                 pass
 
             # -- 5) type mismatch → abort -----------------------------
