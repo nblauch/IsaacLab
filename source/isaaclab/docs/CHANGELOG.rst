@@ -1,6 +1,107 @@
 Changelog
 ---------
 
+4.7.0 (2026-05-06)
+~~~~~~~~~~~~~~~~~~
+
+Added
+^^^^^
+
+* Added LEAPP export support for manager-based RSL-RL policies, including
+  export-time observation/action annotation, recurrent actor-state handling, and
+  deployment through :mod:`scripts.reinforcement_learning.leapp.deploy`.
+* Added a Direct workflow LEAPP export tutorial and annotated ANYmal-C example
+  script showing how to mark policy inputs, outputs, and persistent state with
+  LEAPP annotations. Direct workflow policies can be exported with
+  :mod:`scripts.reinforcement_learning.leapp.rsl_rl.export`, but are not yet
+  supported by :mod:`scripts.reinforcement_learning.leapp.deploy`.
+* Added LEAPP deployment documentation describing the exported-policy validation
+  flow and linking the manager-based and Direct workflow export paths.
+* Added LEAPP export annotations, proxy utilities, and deployment environment
+  support for Isaac Lab assets, sensors, commands, and manager-based environments.
+* Added :class:`~isaaclab.renderers.camera_render_spec.CameraRenderSpec` so render backends
+  take explicit camera inputs (USD paths, :class:`~isaaclab.sensors.camera.CameraCfg`, device,
+  counts) instead of the :class:`~isaaclab.sensors.camera.Camera` instance.
+* Added :class:`~isaaclab.renderers.render_context.RenderContext` (accessed as
+  :attr:`~isaaclab.sim.simulation_context.SimulationContext.render_context`) to own one or
+  more :class:`~isaaclab.renderers.base_renderer.BaseRenderer` instances: configurations that
+  compare equal under ``==`` and share the same concrete
+  :class:`~isaaclab.renderers.renderer_cfg.RendererCfg` class reuse a backend; distinct
+  types (e.g. Isaac RTX and Newton) register separate backends, each with
+  :meth:`~isaaclab.renderers.base_renderer.BaseRenderer.prepare_stage` the first time a camera
+  with that configuration initializes.
+* Added :meth:`~isaaclab.renderers.render_context.RenderContext.render_into_camera` to run
+  :meth:`~isaaclab.renderers.render_context.RenderContext.update_transforms` (at most once
+  per physics step), then :meth:`~isaaclab.renderers.base_renderer.BaseRenderer.render` and
+  :meth:`~isaaclab.renderers.base_renderer.BaseRenderer.read_output`.
+* Added :meth:`~isaaclab.sim.simulation_context.SimulationContext.get_physics_step_count`.
+* Added :class:`~isaaclab.cloner.ClonePlan` frozen dataclass capturing per-group
+  prototype-to-environment mappings (``dest_template``, ``prototype_paths``,
+  ``clone_mask``). Lets downstream consumers (scene data providers, mesh samplers)
+  read prototype geometry once and scatter to environments via the per-group mask
+  instead of walking per-env USD paths.
+* Added :meth:`~isaaclab.sim.SimulationContext.get_clone_plans` and
+  :meth:`~isaaclab.sim.SimulationContext.set_clone_plans` for publishing and
+  consuming the cloner's per-group plan map.
+* Added :attr:`~isaaclab.scene.InteractiveScene.clone_plans` property (forwards to
+  :meth:`~isaaclab.sim.SimulationContext.get_clone_plans`) so consumers holding a
+  scene reference can read the published plans without going through the sim
+  context.
+* Added backend-agnostic :class:`~isaaclab.markers.VisualizationMarkers` support for
+  marker-capable Kit, Newton, Rerun, and Viser visualizers.
+
+Changed
+^^^^^^^
+
+* :class:`~isaaclab.sensors.camera.Camera` obtains a backend via
+  :meth:`~isaaclab.renderers.render_context.RenderContext.get_renderer` and calls
+  :meth:`~isaaclab.renderers.base_renderer.BaseRenderer.create_render_data` with
+  a :class:`~isaaclab.renderers.camera_render_spec.CameraRenderSpec` (no
+  :class:`~isaaclab.sensors.sensor_base.SensorBase` reference on the public API).
+* :class:`~isaaclab.scene.interactive_scene.InteractiveScene` calls
+  :meth:`~isaaclab.renderers.render_context.RenderContext.update_transforms` once at the start
+  of :meth:`~isaaclab.scene.interactive_scene.InteractiveScene.update` when
+  ``lazy_sensor_update`` is false; fetches that render still dedupe the same way via
+  ``physics_step_count`` in :class:`~isaaclab.renderers.render_context.RenderContext`.
+* **Breaking:** :func:`~isaaclab.cloner.clone_from_template` now returns
+  ``dict[str, ClonePlan]`` instead of ``None``. Bind the result and publish it
+  through :meth:`~isaaclab.sim.SimulationContext.set_clone_plans` if downstream
+  consumers (e.g. the PhysX scene data provider's Newton-visualizer build path)
+  need to read the plan.
+* Changed :func:`~isaaclab.envs.mdp.body_incoming_wrench` to read from
+  :class:`~isaaclab.sensors.JointWrenchSensor`. Pass
+  ``sensor_cfg=SceneEntityCfg("joint_wrench", body_names=...)`` instead of an
+  articulation asset config.
+
+Removed
+^^^^^^^
+
+* **Breaking:** Removed
+  :attr:`~isaaclab.cloner.TemplateCloneCfg.visualizer_clone_fn`,
+  :func:`~isaaclab.cloner.resolve_visualizer_clone_fn`, and
+  :class:`~isaaclab.physics.scene_data_requirements.VisualizerPrebuiltArtifacts`.
+  Scene data providers now build backend models from the
+  :class:`~isaaclab.cloner.ClonePlan` map via
+  :meth:`~isaaclab.sim.SimulationContext.get_clone_plans` instead of receiving a
+  prebuilt artifact through a clone-time callback.
+* **Breaking:** Removed
+  :meth:`~isaaclab.sim.SimulationContext.get_scene_data_visualizer_prebuilt_artifact`,
+  :meth:`~isaaclab.sim.SimulationContext.set_scene_data_visualizer_prebuilt_artifact`,
+  and
+  :meth:`~isaaclab.sim.SimulationContext.clear_scene_data_visualizer_prebuilt_artifact`.
+  Use :meth:`~isaaclab.sim.SimulationContext.get_clone_plans` /
+  :meth:`~isaaclab.sim.SimulationContext.set_clone_plans` instead.
+* Removed ``BaseArticulationData.body_incoming_joint_wrench_b``. Add
+  :class:`~isaaclab.sensors.JointWrenchSensorCfg` to the scene and read
+  :attr:`~isaaclab.sensors.JointWrenchSensorData.force` and
+  :attr:`~isaaclab.sensors.JointWrenchSensorData.torque` instead.
+
+Fixed
+^^^^^
+
+* Pinned ``omniverseclient`` to ``2.71.1.7015``.
+
+
 4.6.27 (2026-05-01)
 ~~~~~~~~~~~~~~~~~~~
 

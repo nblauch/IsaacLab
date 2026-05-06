@@ -1,6 +1,32 @@
 Changelog
 ---------
 
+0.5.30 (2026-05-06)
+~~~~~~~~~~~~~~~~~~~
+
+Added
+^^^^^
+
+* Added :class:`~isaaclab_physx.sensors.JointWrenchSensor` for reading PhysX
+  incoming joint reaction wrenches as split force [N] and torque [N·m] buffers.
+  The sensor accepts asset prim paths whose articulation root is nested below
+  the configured prim and converts PhysX's native body-frame wrench to the
+  shared child-side joint-frame convention.
+
+Changed
+^^^^^^^
+
+* Modified the isaac rtx renderer to use the new patterns from renderer/camera decoupling.
+
+Removed
+^^^^^^^
+
+* Removed ``ArticulationData.body_incoming_joint_wrench_b``. Add
+  :class:`~isaaclab.sensors.JointWrenchSensorCfg` to the scene and read
+  :attr:`~isaaclab.sensors.JointWrenchSensorData.force` and
+  :attr:`~isaaclab.sensors.JointWrenchSensorData.torque` instead.
+
+
 0.5.29 (2026-04-30)
 ~~~~~~~~~~~~~~~~~~~
 
