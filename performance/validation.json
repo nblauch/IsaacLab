@@ -1,0 +1,44 @@
+{
+  "perf-4096-off-a": {
+    "returncode": 0,
+    "other_compute_pids": [],
+    "gpu_name": "NVIDIA RTX 6000 Ada Generation",
+    "peak_benchmark_processes_used_bytes": 14040158208
+  },
+  "perf-4096-on-a": {
+    "returncode": 0,
+    "other_compute_pids": [],
+    "gpu_name": "NVIDIA RTX 6000 Ada Generation",
+    "peak_benchmark_processes_used_bytes": 14071615488
+  },
+  "perf-4096-on-b": {
+    "returncode": 0,
+    "other_compute_pids": [],
+    "gpu_name": "NVIDIA RTX 6000 Ada Generation",
+    "peak_benchmark_processes_used_bytes": 14038061056
+  },
+  "perf-4096-off-b": {
+    "returncode": 0,
+    "other_compute_pids": [],
+    "gpu_name": "NVIDIA RTX 6000 Ada Generation",
+    "peak_benchmark_processes_used_bytes": 13788499968
+  },
+  "perf-isaacrtx-4096-off-a": {
+    "returncode": 0,
+    "other_compute_pids": [],
+    "gpu_name": "NVIDIA RTX 6000 Ada Generation",
+    "peak_benchmark_processes_used_bytes": 20992151552
+  },
+  "perf-isaacrtx-4096-on-a": {
+    "returncode": 0,
+    "other_compute_pids": [],
+    "gpu_name": "NVIDIA RTX 6000 Ada Generation",
+    "peak_benchmark_processes_used_bytes": 20992151552
+  },
+  "perf-isaacrtx-4096-on-b": {
+    "returncode": 0,
+    "other_compute_pids": [],
+    "gpu_name": "NVIDIA RTX 6000 Ada Generation",
+    "peak_benchmark_processes_used_bytes": 20992151552
+  }
+}

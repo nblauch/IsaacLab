@@ -1,0 +1,26 @@
+{
+  "default_flags": {
+    "base": false,
+    "wrist": false
+  },
+  "image_checks": 40,
+  "all_passed": true,
+  "metrics": {
+    "base": {
+      "normal_vs_own_reference_mae": 2.235856109857559,
+      "normal_vs_other_reference_mae": 86.52888145446778
+    },
+    "wrist": {
+      "normal_vs_own_reference_mae": 2.5431355834007263,
+      "normal_vs_other_reference_mae": 86.97441787719727
+    }
+  },
+  "render_products": {
+    "base": "/Render/OmniverseKit/HydraTextures/rp_d1100e34864a4b5d8acb20702bf11aec",
+    "wrist": "/Render/OmniverseKit/HydraTextures/rp_5f569af359154f11b8d7f2a9e8b6b8aa"
+  },
+  "physics_frozen_during_reference": true,
+  "normal_steps_between_controls": 10,
+  "normal_steps_total": 50,
+  "gpu_interference_detected": false
+}

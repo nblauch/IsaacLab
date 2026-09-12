@@ -1,0 +1,190 @@
+{
+  "task": "Isaac-Reorient-KukaAllegro-Camera",
+  "presets_common": "newton_mjwarp,cube,duo_camera,rgb64",
+  "num_envs": 4096,
+  "gpu": "NVIDIA RTX 6000 Ada Generation",
+  "measurement": "Full env.step wall time, CUDA synchronized before and after each step; no policy.",
+  "non_renderer_config_diff_with_refresh_enabled": [],
+  "actions_identical": true,
+  "initial_joints_identical": true,
+  "isaac_rtx_settings": {
+    "/rtx/rendermode": "RealTimePathTracing",
+    "/rtx/post/aa/op": 3,
+    "/rtx/post/dlss/execMode": 2,
+    "/rtx/rtpt/maxBounces": 3,
+    "/rtx/rtpt/spp": 1,
+    "/rtx/rtpt/cached/enabled": false,
+    "/rtx/rtpt/lightcache/cached/enabled": false
+  },
+  "renderer_settings_note": "Upstream backend defaults, not quality-normalized. IsaacRTX runtime DLSS Quality; pinned OVRTX schema defaults DLSS Auto. OVRTX effective internal render resolution was not measured.",
+  "ovrtx_corrected_vs_isaacrtx_default_speedup": 2.3483004746184566,
+  "both_refresh_enabled_ovrtx_speedup": 2.3655700977166356,
+  "summaries": {
+    "ovrtx": {
+      "task": "Isaac-Reorient-KukaAllegro-Camera",
+      "presets": "newton_mjwarp,ovrtx,cube,duo_camera,rgb64",
+      "num_envs": 4096,
+      "gpu": "NVIDIA RTX 6000 Ada Generation",
+      "measurement": "Full env.step wall time, CUDA synchronized before and after each step; no policy.",
+      "run_order": [
+        "off-a",
+        "on-a",
+        "on-b",
+        "off-b"
+      ],
+      "config_diff": [
+        {
+          "path": "scene.base_camera.renderer_cfg.log_file_path",
+          "off": "ARTIFACT_ROOT/perf-4096-off-a/native.log",
+          "on": "ARTIFACT_ROOT/perf-4096-on-a/native.log"
+        },
+        {
+          "path": "scene.base_camera.update_latest_camera_pose",
+          "off": "false",
+          "on": "true"
+        },
+        {
+          "path": "scene.wrist_camera.renderer_cfg.log_file_path",
+          "off": "ARTIFACT_ROOT/perf-4096-off-a/native.log",
+          "on": "ARTIFACT_ROOT/perf-4096-on-a/native.log"
+        },
+        {
+          "path": "scene.wrist_camera.update_latest_camera_pose",
+          "off": "false",
+          "on": "true"
+        }
+      ],
+      "actions_identical": true,
+      "initial_joints_identical": true,
+      "post_warmup_joints_identical": false,
+      "final_joints_identical": false,
+      "runs": {
+        "off-a": {
+          "mean_step_ms": 151.27378648794547,
+          "median_step_ms": 151.3986319914693,
+          "p95_step_ms": 156.81317718263017,
+          "env_fps": 27076.733484994093,
+          "peak_process_gpu_gib": 13.075916290283203,
+          "terminations": 75,
+          "timeouts": 0
+        },
+        "on-a": {
+          "mean_step_ms": 179.8379394243966,
+          "median_step_ms": 180.86399548337795,
+          "p95_step_ms": 191.56196869007545,
+          "env_fps": 22776.061675917652,
+          "peak_process_gpu_gib": 13.105213165283203,
+          "terminations": 74,
+          "timeouts": 0
+        },
+        "on-b": {
+          "mean_step_ms": 181.50191546228598,
+          "median_step_ms": 183.93376049061771,
+          "p95_step_ms": 191.7348769478849,
+          "env_fps": 22567.254949169404,
+          "peak_process_gpu_gib": 13.073963165283203,
+          "terminations": 74,
+          "timeouts": 0
+        },
+        "off-b": {
+          "mean_step_ms": 153.54517033410957,
+          "median_step_ms": 153.39999698335305,
+          "p95_step_ms": 158.63171099044848,
+          "env_fps": 26676.18910505117,
+          "peak_process_gpu_gib": 12.841541290283203,
+          "terminations": 73,
+          "timeouts": 0
+        }
+      },
+      "off": {
+        "mean_step_ms": 152.40947841102752,
+        "median_step_ms": 152.05194801092148,
+        "p95_step_ms": 158.26459666714072,
+        "env_fps": 26874.96895011771,
+        "measured_steps": 160
+      },
+      "on": {
+        "mean_step_ms": 180.6699274433413,
+        "median_step_ms": 183.05003650311846,
+        "p95_step_ms": 191.73288889869582,
+        "env_fps": 22671.177533319813,
+        "measured_steps": 160
+      },
+      "step_time_increase_percent": 18.542448492671305,
+      "env_fps_decrease_percent": 15.642032646067427
+    },
+    "isaacsim_rtx": {
+      "task": "Isaac-Reorient-KukaAllegro-Camera",
+      "presets": "newton_mjwarp,isaacsim_rtx,cube,duo_camera,rgb64",
+      "num_envs": 4096,
+      "gpu": "NVIDIA RTX 6000 Ada Generation",
+      "measurement": "Full env.step wall time, CUDA synchronized before and after each step; no policy.",
+      "run_order": [
+        "off-a",
+        "on-a",
+        "on-b"
+      ],
+      "config_diff": [
+        {
+          "path": "scene.base_camera.update_latest_camera_pose",
+          "off": "false",
+          "on": "true"
+        },
+        {
+          "path": "scene.wrist_camera.update_latest_camera_pose",
+          "off": "false",
+          "on": "true"
+        }
+      ],
+      "actions_identical": true,
+      "initial_joints_identical": true,
+      "post_warmup_joints_identical": false,
+      "final_joints_identical": false,
+      "runs": {
+        "off-a": {
+          "mean_step_ms": 424.2672763644805,
+          "median_step_ms": 420.8598880068166,
+          "p95_step_ms": 441.2969111275743,
+          "env_fps": 9654.291594436332,
+          "peak_process_gpu_gib": 19.550464630126953,
+          "terminations": 77,
+          "timeouts": 0
+        },
+        "on-a": {
+          "mean_step_ms": 428.02139164850814,
+          "median_step_ms": 424.20620599295944,
+          "p95_step_ms": 454.08560178184416,
+          "env_fps": 9569.615163916018,
+          "peak_process_gpu_gib": 19.550464630126953,
+          "terminations": 75,
+          "timeouts": 0
+        },
+        "on-b": {
+          "mean_step_ms": 426.7533641846967,
+          "median_step_ms": 422.7216660074191,
+          "p95_step_ms": 454.8681202024454,
+          "env_fps": 9598.049702139599,
+          "peak_process_gpu_gib": 19.550464630126953,
+          "terminations": 78,
+          "timeouts": 0
+        }
+      },
+      "off": {
+        "mean_step_ms": 424.2672763644805,
+        "median_step_ms": 420.8598880068166,
+        "p95_step_ms": 441.2969111275743,
+        "env_fps": 9654.291594436332,
+        "measured_steps": 80
+      },
+      "on": {
+        "mean_step_ms": 427.3873779166024,
+        "median_step_ms": 423.22092449467164,
+        "p95_step_ms": 454.8607457516482,
+        "env_fps": 9583.811342222809,
+        "measured_steps": 160
+      },
+      "step_time_increase_percent": 0.7354094284286683,
+      "env_fps_decrease_percent": 0.7300406407254156
+    }
+  }
+}
