@@ -1,0 +1,16 @@
+{
+  "tested_isaaclab_commit": "9adf4831384dbe9320de72e9b7809c0d87252b9a",
+  "source_checked_develop_commit": "487b5cac4a2a94ddd60070b3de21a16904ef0679",
+  "renderer_sha256": "33c62af19af40ca8ea50611107a15e336c3cfa6803f9d4318d15628d34dcf928",
+  "newton_commit": "24bd863528d6b91137408930d0fbe8fa216ad962",
+  "warp": "1.16.0",
+  "torch": "2.11.0+cu128",
+  "os": "Ubuntu 24.04.4 LTS",
+  "driver": "580.173.02",
+  "returncode": 0,
+  "gpu": "NVIDIA RTX 6000 Ada Generation",
+  "other_compute_processes": [],
+  "peak_process_gpu_bytes": 3722629120,
+  "kit_launched": false,
+  "native_renderer_patched": false
+}

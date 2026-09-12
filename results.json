@@ -1,0 +1,143 @@
+{
+  "task": "Isaac-Reorient-KukaAllegro-Camera",
+  "presets": "newton_mjwarp,ovrtx,cube,duo_camera,rgb64",
+  "num_envs": 4,
+  "seed": 42,
+  "gpu": "NVIDIA RTX 6000 Ada Generation",
+  "gpu_uuid": "GPU-ab4297ba-4762-cac1-ca17-6e49ac047a26",
+  "ovrtx": "0.4.1.364340",
+  "ovstage": "0.1.1.355824",
+  "use_ovstage": false,
+  "shared_renderer": true,
+  "native_render_products": [
+    "/Render/RenderProduct"
+  ],
+  "native_camera_relative_path": "Camera",
+  "cameras": {
+    "base": {
+      "prim_path": "/World/envs/env_[^/]+/Camera",
+      "width": 64,
+      "height": 64,
+      "refresh_pose_default": false,
+      "initial_cached_positions": [
+        [
+          2.069999933242798,
+          -2.299999952316284,
+          0.5
+        ],
+        [
+          2.069999933242798,
+          0.699999988079071,
+          0.5
+        ],
+        [
+          -0.9300000071525574,
+          -2.299999952316284,
+          0.5
+        ],
+        [
+          -0.9300000071525574,
+          0.699999988079071,
+          0.5
+        ]
+      ],
+      "refreshed_positions": [
+        [
+          2.069999933242798,
+          -2.299999952316284,
+          0.5
+        ],
+        [
+          2.069999933242798,
+          0.699999988079071,
+          0.5
+        ],
+        [
+          -0.9300000071525574,
+          -2.299999952316284,
+          0.5
+        ],
+        [
+          -0.9300000071525574,
+          0.699999988079071,
+          0.5
+        ]
+      ]
+    },
+    "wrist": {
+      "prim_path": "/World/envs/env_[^/]+/Robot/ee_link/palm_link/Camera",
+      "width": 64,
+      "height": 64,
+      "refresh_pose_default": false,
+      "initial_cached_positions": [
+        [
+          1.887973666191101,
+          -1.6616922616958618,
+          1.410344123840332
+        ],
+        [
+          1.887973666191101,
+          1.3383077383041382,
+          1.410344123840332
+        ],
+        [
+          -1.112026333808899,
+          -1.6616922616958618,
+          1.410344123840332
+        ],
+        [
+          -1.112026333808899,
+          1.3383077383041382,
+          1.410344123840332
+        ]
+      ],
+      "refreshed_positions": [
+        [
+          1.356795072555542,
+          -1.1923213005065918,
+          0.899842381477356
+        ],
+        [
+          1.0841727256774902,
+          1.1432569026947021,
+          1.3578922748565674
+        ],
+        [
+          -1.6172603368759155,
+          -1.197871446609497,
+          0.6211287975311279
+        ],
+        [
+          -1.6333211660385132,
+          1.458958625793457,
+          1.1294175386428833
+        ]
+      ]
+    }
+  },
+  "note": "Scene physics is frozen after five zero-action steps. Camera captures alone follow.",
+  "default_pair": {
+    "mae_0_255": 0.13677978515625,
+    "fraction_equal_channels": 0.8936767578125
+  },
+  "refreshed_pair": {
+    "mae_0_255": 84.90753173828125,
+    "fraction_equal_channels": 0.038614908854166664
+  },
+  "default_base_vs_refreshed_base": {
+    "mae_0_255": 38.81538772583008,
+    "fraction_equal_channels": 0.007120768229166667
+  },
+  "default_base_vs_refreshed_wrist": {
+    "mae_0_255": 79.9487533569336,
+    "fraction_equal_channels": 0.0032552083333333335
+  },
+  "wrist_after_base_publication_vs_base": {
+    "mae_0_255": 0.96087646484375,
+    "fraction_equal_channels": 0.7536824544270834
+  },
+  "wrist_after_base_publication_vs_wrist": {
+    "mae_0_255": 84.92240142822266,
+    "fraction_equal_channels": 0.03814697265625
+  }
+}
