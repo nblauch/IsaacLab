@@ -1,0 +1,7 @@
+{
+  "returncode": 0,
+  "other_compute_processes": [],
+  "gpu": "NVIDIA RTX 6000 Ada Generation",
+  "peak_process_gpu_bytes": 3739406336,
+  "tested_isaaclab_commit": "9adf4831384dbe9320de72e9b7809c0d87252b9a"
+}
