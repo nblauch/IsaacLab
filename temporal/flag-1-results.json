@@ -1,0 +1,51 @@
+{
+  "task": "Isaac-Reorient-KukaAllegro-Camera",
+  "presets": "newton_mjwarp,ovrtx,cube,duo_camera,rgb64",
+  "num_envs": 4096,
+  "refresh": true,
+  "seed": 42,
+  "gpu": "NVIDIA RTX 6000 Ada Generation",
+  "ovrtx": "0.4.1.364340",
+  "ovstage": "0.1.1.355824",
+  "frames": 360,
+  "fps": 30,
+  "phases": "0-4s frozen; 4-8s nonzero action steps plus capture; 8-12s frozen",
+  "static_start_joints_sha256": "086d4587c8208e00c8f9c20a15c49439eb96ac967122e2e2bc05bb5c1109bd65",
+  "static_metrics": {
+    "static_start": {
+      "frame_difference_mae_by_eye": [
+        3.1469132900238037,
+        4.899142265319824
+      ],
+      "temporal_std_by_eye": [
+        2.664200782775879,
+        4.364926815032959
+      ]
+    },
+    "static_end": {
+      "frame_difference_mae_by_eye": [
+        2.010516405105591,
+        3.570028305053711
+      ],
+      "temporal_std_by_eye": [
+        1.7544132471084595,
+        3.2249679565429688
+      ]
+    }
+  },
+  "shared_renderer": true,
+  "render_products": [
+    "/Render/RenderProduct"
+  ],
+  "layout": "Rows env0/1/2, columns base/wrist. Native 64x64 RGB.",
+  "camera_routing_or_history_patches": false,
+  "local_configuration_patch": "OVRTXRendererConfig(enable_geometry_streaming=False); Kit UJITSO disabled (Kit not launched in these OVRTX runs).",
+  "tested_isaaclab_commit": "9adf4831384dbe9320de72e9b7809c0d87252b9a",
+  "lossless_video_matches_all_raw_frames": true,
+  "validation": {
+    "returncode": 0,
+    "other_compute_processes": false,
+    "peak_gpu_process_bytes": 14038061056
+  },
+  "static_base_wrist_mae": 103.37958333333333
+}
