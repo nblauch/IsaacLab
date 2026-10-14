@@ -127,6 +127,15 @@ class NewtonCollisionPipelineCfg:
     Defaults to ``None`` (auto-estimate, same as Newton's default).
     """
 
+    shape_pairs_max: int | None = None
+    """Maximum candidate shape pairs for the SAP and NXN broad phases.
+
+    Defaults to ``None``, which reserves the worst-case pair count per world.
+    A positive limit reduces allocation for sparse scenes with many colliders.
+    Too small a limit emits a runtime overflow warning and drops candidate pairs.
+    Ignored by the explicit broad phase.
+    """
+
     max_triangle_pairs: int = 1_000_000
     """Maximum number of triangle pairs allocated by narrow phase for mesh and heightfield collisions.
 
