@@ -139,3 +139,42 @@ With a rig, :func:`~mdp.gaze_state` reports the head's angles plus the software 
 
    Each mode on the pan-tilt mount with Newton's MJWarp solver: the policy pans 4.5° left three times. In hybrid gaze
    the fixation jumps at once and holds while the head takes over from the retina.
+
+.. _concepts_sensors_foveated_camera_binocular:
+
+Binocular gaze
+--------------
+
+:class:`~mdp.BinocularGazeActionCfg` moves two foveated cameras on one body with three actions: the version, their
+shared line of sight (tilt, pan), and the vergence, the angle between their lines of sight. Each eye turns from the
+version by half the vergence toward the other, in the plane of the version and the baseline, so the lines of sight
+always meet. The version moves as a single camera's gaze does in ``"software"``, ``"physical"`` or ``"hybrid"``
+mode; the vergence always turns the retinas. The eyes need parallel optical axes, the same retina, and Newton or
+OVRTX. :data:`~assets.PAN_TILT_STEREO_OFFSETS` places two eyes 6.5 cm apart on the pan-tilt mount:
+
+.. code-block:: python
+
+   from isaaclab_fovi.assets import PAN_TILT_STEREO_OFFSETS
+   from isaaclab_fovi.mdp import BinocularGazeActionCfg
+
+   link = "{ENV_REGEX_NS}/PanTilt/Geometry/world/pan_link/tilt_link"
+   left_eye = eye.replace(prim_path=f"{link}/LeftEye", offset=PAN_TILT_STEREO_OFFSETS[0])
+   right_eye = eye.replace(prim_path=f"{link}/RightEye", offset=PAN_TILT_STEREO_OFFSETS[1])
+   gaze = BinocularGazeActionCfg(
+       asset_name="left_eye", right_asset_name="right_eye", mode="hybrid", rig=GazeRigCfg(asset_name="rig")
+   )
+
+:func:`~mdp.binocular_gaze_state` observes the version, the vergence and their velocities, and
+:class:`~mdp.binocular_gaze_teacher_labels` labels the actions that fixate a point with both eyes. The
+``foveated-stereo`` demo steps both eyes with these labels from object to object:
+
+.. code-block:: bash
+
+   uv run --extra fovi isaaclab demo foveated-stereo
+
+.. figure:: ../../_static/overview/sensors/foveated_camera_binocular.jpg
+   :alt: Left and right eye images at four fixations, with the version, head pan and vergence over time.
+
+   The ``foveated-stereo`` demo in hybrid gaze. The fixated object sits in both foveas, the version jumps to each
+   object while the head turns after it, and the vergence follows the object's distance, from 1° at 3.6 m to 10° at
+   0.4 m.

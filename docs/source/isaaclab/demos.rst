@@ -142,6 +142,15 @@ No source checkout is required.
               alt="Foveated camera images, each fixating a different coloured object" loading="lazy">
          <span>Foveated Camera</span>
        </button>
+       <button type="button" class="demo-card" aria-pressed="false"
+               data-demo-name="Foveated Stereo" data-demo-id="foveated-stereo"
+               data-demo-physics="newton_mjwarp" data-demo-fixed-physics="true"
+               data-demo-visualizers="newton_gl" data-demo-extras="fovi"
+               data-demo-description="Watch two foveated eyes on a pan-tilt head fixate near and far objects together.">
+         <img src="../../_static/demos/foveated_stereo.jpg"
+              alt="Left and right foveated eyes fixating a close sphere and a far cube" loading="lazy">
+         <span>Foveated Stereo</span>
+       </button>
      </div>
        <aside class="admonition hint demo-command-note" data-demo-note="h1-locomotion" hidden>
          <p class="admonition-title">H1 locomotion</p>
@@ -214,6 +223,19 @@ viewer shows the camera's retina, dense where it looks.
    uv run --extra fovi isaaclab demo foveated-camera env.scene.eye.cmf_a_deg=1000
 
 The last command samples nearly uniformly, a matched non-foveated retina for comparison.
+
+Foveated stereo
+---------------
+
+Watch two foveated eyes on a pan-tilt head fixate near and far objects together, with
+:ref:`binocular gaze <concepts_sensors_foveated_camera_binocular>`: the retinas jump to each object while the head
+turns after them, and the eyes converge on near objects. The viewer shows the left eye; its camera menu switches to
+the right eye or an overview.
+
+.. code-block:: bash
+
+   uv run --extra fovi isaaclab demo foveated-stereo
+   uv run --extra fovi --extra ovrtx isaaclab demo foveated-stereo renderer=ovrtx
 
 
 .. _demo-sonic:

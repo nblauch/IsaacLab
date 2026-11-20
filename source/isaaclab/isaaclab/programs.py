@@ -135,6 +135,13 @@ DEMOS = (
         extras=("fovi",),
         required_modules=("isaaclab_fovi", "fovi"),
     ),
+    ProgramSpec(
+        "foveated-stereo",
+        "examples/demos/foveated_stereo.py",
+        "Watch two foveated eyes on a pan-tilt head fixate near and far objects together.",
+        extras=("fovi",),
+        required_modules=("isaaclab_fovi", "fovi"),
+    ),
 )
 
 
