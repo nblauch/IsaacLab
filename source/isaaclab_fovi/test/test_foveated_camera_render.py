@@ -64,3 +64,7 @@ def test_foveated_camera_samples_densest_at_the_fixation(backend):
 def test_hybrid_gaze_turns_the_head_onto_the_fixation():
     # Gaze that turns a rig needs a tracked mount, so a renderer that turns the camera's pose by the gaze.
     cases.hybrid_gaze_turns_the_head_onto_the_fixation(backend_cfg("newton_warp"))
+
+
+def test_binocular_gaze_fixates_a_near_point_with_both_eyes():
+    cases.binocular_gaze_fixates_a_near_point_with_both_eyes(backend_cfg("newton_warp"))
